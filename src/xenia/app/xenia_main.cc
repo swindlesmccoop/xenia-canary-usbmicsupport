@@ -41,6 +41,7 @@
 #endif  // XE_PLATFORM_LINUX
 #if !XE_PLATFORM_ANDROID
 #include "xenia/apu/sdl/sdl_audio_system.h"
+#include "xenia/apu/sdl/sdl_mic_source.h"
 #endif  // !XE_PLATFORM_ANDROID
 #if XE_PLATFORM_WIN32
 #include "xenia/apu/xaudio2/xaudio2_audio_system.h"
@@ -326,6 +327,8 @@ std::unique_ptr<apu::AudioSystem> EmulatorApp::CreateAudioSystem(
 #endif  // XE_PLATFORM_LINUX
 #if !XE_PLATFORM_ANDROID
   factory.Add<apu::sdl::SDLAudioSystem>("sdl");
+  // Microphone capture goes through SDL whichever output backend is chosen.
+  apu::sdl::SDLMicSource::Register();
 #endif  // !XE_PLATFORM_ANDROID
   factory.Add<apu::nop::NopAudioSystem>("nop");
   return factory.Create(cvars::apu, processor);
