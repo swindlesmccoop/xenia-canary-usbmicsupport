@@ -41,6 +41,8 @@ class ALSAAudioDriver : public AudioDriver {
   void WorkerThread();
   bool SetupAlsaDevice();
   bool RecoverFromUnderrun(int err);
+  // Discards frames at the playback rate until the PCM can be reopened.
+  void ReopenDevice();
   void ConvertChannels(const float* input, float* output,
                        size_t channel_samples);
   size_t ResampleFrame(const float* input, float* output,

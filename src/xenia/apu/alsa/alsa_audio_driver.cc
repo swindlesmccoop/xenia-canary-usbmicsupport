@@ -328,7 +328,8 @@ void ALSAAudioDriver::WorkerThread() {
         continue;
       }
       XELOGE("PCM wait failed: {}", snd_strerror(err));
-      break;
+      ReopenDevice();
+      continue;
     }
 
     // Check if we have data to write before calling avail_update
@@ -350,7 +351,8 @@ void ALSAAudioDriver::WorkerThread() {
       }
       XELOGE("Failed to get available frames: {}",
              snd_strerror(frames_available));
-      break;
+      ReopenDevice();
+      continue;
     }
 
     // Write frames from ring buffer
@@ -409,7 +411,7 @@ void ALSAAudioDriver::WorkerThread() {
                snd_strerror(avail));
         if (!RecoverFromUnderrun(avail)) {
           XELOGE("Failed to check available space: {}", snd_strerror(avail));
-          running_ = false;
+          ReopenDevice();
           break;
         }
         continue;
@@ -422,7 +424,7 @@ void ALSAAudioDriver::WorkerThread() {
         if (written < 0) {
           if (!RecoverFromUnderrun(written)) {
             XELOGE("Failed to write audio: {}", snd_strerror(written));
-            running_ = false;
+            ReopenDevice();
             break;
           }
           continue;  // Skip frame advancement if we had to recover
@@ -448,8 +450,10 @@ void ALSAAudioDriver::WorkerThread() {
 }
 
 bool ALSAAudioDriver::RecoverFromUnderrun(int err) {
-  if (err == -EPIPE) {
-    // Underrun occurred
+  if (err == -EPIPE || err == -EIO || err == -EBADFD) {
+    // Underrun occurred, or the PCM was left unprepared by a drop (-EBADFD).
+    // PipeWire's ALSA plugin raises POLLERR on both while the PCM state still
+    // reads RUNNING or SETUP, so snd_pcm_wait reports them as -EIO.
     XELOGW("ALSA underrun detected, recovering...");
     err = snd_pcm_prepare(pcm_handle_);
     if (err < 0) {
@@ -473,6 +477,39 @@ bool ALSAAudioDriver::RecoverFromUnderrun(int err) {
     return true;
   }
   return false;
+}
+
+void ALSAAudioDriver::ReopenDevice() {
+  // The guest's audio callbacks only run while the semaphore is released, so
+  // keep consuming frames at the playback rate until the PCM works again.
+  const auto frame_duration = std::chrono::microseconds(
+      uint64_t(channel_samples_) * 1000000 / frame_frequency_);
+  const uint32_t output_channels = output_channels_;
+  auto next_open = std::chrono::steady_clock::now();
+  while (running_) {
+    auto now = std::chrono::steady_clock::now();
+    if (now >= next_open) {
+      if (pcm_handle_) {
+        snd_pcm_close(pcm_handle_);
+        pcm_handle_ = nullptr;
+      }
+      if (SetupAlsaDevice() && output_channels_ == output_channels &&
+          snd_pcm_prepare(pcm_handle_) >= 0) {
+        XELOGI("ALSA device reopened");
+        return;
+      }
+      XELOGE("Failed to reopen ALSA device, retrying in 1 s");
+      next_open = now + std::chrono::seconds(1);
+    }
+
+    size_t current_read = read_index_.load(std::memory_order_relaxed);
+    if (current_read != write_index_.load(std::memory_order_acquire)) {
+      read_index_.store((current_read + 1) % kRingBufferSize,
+                        std::memory_order_release);
+      semaphore_->Release(1, nullptr);
+    }
+    std::this_thread::sleep_for(frame_duration);
+  }
 }
 
 void ALSAAudioDriver::ConvertChannels(const float* input, float* output,
