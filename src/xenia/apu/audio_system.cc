@@ -13,6 +13,7 @@
 
 #include "xenia/apu/apu_flags.h"
 #include "xenia/apu/audio_driver.h"
+#include "xenia/apu/mic_device.h"
 #include "xenia/apu/nop_audio_driver.h"
 #include "xenia/apu/xma_decoder.h"
 #include "xenia/base/assert.h"
@@ -56,6 +57,7 @@ AudioSystem::AudioSystem(cpu::Processor* processor)
   assert_not_null(pending_work_event_);
 
   xma_decoder_ = std::make_unique<xe::apu::XmaDecoder>(processor_);
+  mic_device_ = std::make_unique<xe::apu::MicDevice>(memory_, processor_);
 
   resume_event_ = xe::threading::Event::CreateAutoResetEvent(false);
   assert_not_null(resume_event_);
@@ -69,6 +71,10 @@ AudioSystem::~AudioSystem() {
 
 X_STATUS AudioSystem::Setup(kernel::KernelState* kernel_state) {
   X_STATUS result = xma_decoder_->Setup(kernel_state);
+  if (result) {
+    return result;
+  }
+  result = mic_device_->Setup(kernel_state);
   if (result) {
     return result;
   }
@@ -208,6 +214,7 @@ int AudioSystem::FindFreeClient() {
 void AudioSystem::Initialize() {}
 
 void AudioSystem::Shutdown() {
+  mic_device_->Shutdown();
   worker_running_ = false;
   pending_work_event_->Set();
   if (worker_thread_) {

@@ -25,6 +25,7 @@ namespace apu {
 constexpr fourcc_t kAudioSaveSignature = make_fourcc("XAUD");
 
 class AudioDriver;
+class MicDevice;
 class XmaDecoder;
 
 class AudioSystem {
@@ -40,6 +41,7 @@ class AudioSystem {
   Memory* memory() const { return memory_; }
   cpu::Processor* processor() const { return processor_; }
   XmaDecoder* xma_decoder() const { return xma_decoder_.get(); }
+  MicDevice* mic_device() const { return mic_device_.get(); }
 
   virtual X_STATUS Setup(kernel::KernelState* kernel_state);
   virtual void Shutdown();
@@ -78,6 +80,7 @@ class AudioSystem {
   Memory* memory_ = nullptr;
   cpu::Processor* processor_ = nullptr;
   std::unique_ptr<XmaDecoder> xma_decoder_;
+  std::unique_ptr<MicDevice> mic_device_;
 
   std::atomic<bool> worker_running_ = {false};
   kernel::object_ref<kernel::XHostThread> worker_thread_;
