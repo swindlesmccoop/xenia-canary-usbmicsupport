@@ -76,9 +76,9 @@ some rhythm games on the Xbox 360.
 
 If `mic_device` is left empty, the system's default input is used, which may
 not be the microphone you want. The name is the one SDL reports, which is
-usually the same as the description in the system's sound settings. If the name
-doesn't match, every capture device SDL can see gets logged, so the right one
-can be copied from there:
+usually the same as the description in the system's sound settings. If
+`mic_device` is left empty, or the name doesn't match, every capture device SDL
+can see gets logged, so the right one can be copied from there:
 
 ```
 Mic: cannot open capture device 'wrong name': ...

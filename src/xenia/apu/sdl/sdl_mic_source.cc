@@ -22,6 +22,29 @@ namespace xe {
 namespace apu {
 namespace sdl {
 
+namespace {
+
+void LogCaptureDevices() {
+  int count = SDL_GetNumAudioDevices(1);
+  for (int i = 0; i < count; ++i) {
+    XELOGI("Mic: capture device available: '{}'", SDL_GetAudioDeviceName(i, 1));
+  }
+}
+
+// Not every SDL backend can name the default device; empty if unknown.
+std::string GetDefaultCaptureDeviceName() {
+  char* name = nullptr;
+  SDL_AudioSpec spec;
+  if (SDL_GetDefaultAudioInfo(&name, &spec, 1) != 0 || !name) {
+    return std::string();
+  }
+  std::string result(name);
+  SDL_free(name);
+  return result;
+}
+
+}  // namespace
+
 SDLMicSource::SDLMicSource(std::string device_name)
     : device_name_(std::move(device_name)) {}
 
@@ -56,18 +79,24 @@ bool SDLMicSource::Start(uint32_t sample_rate) {
   if (!device_) {
     XELOGE("Mic: cannot open capture device '{}': {}", device_name_,
            SDL_GetError());
-    int count = SDL_GetNumAudioDevices(1);
-    for (int i = 0; i < count; ++i) {
-      XELOGI("Mic: capture device available: '{}'",
-             SDL_GetAudioDeviceName(i, 1));
-    }
+    LogCaptureDevices();
     return false;
   }
   // Bound latency at 100 ms; older audio is dropped.
   max_buffered_ = sample_rate / 10;
   SDL_PauseAudioDevice(device_, 0);
-  XELOGI("Mic: capturing from '{}' at {} Hz",
-         device_name_.empty() ? "default" : device_name_, sample_rate);
+  if (device_name_.empty()) {
+    std::string default_name = GetDefaultCaptureDeviceName();
+    if (default_name.empty()) {
+      XELOGI("Mic: capturing from system default device at {} Hz", sample_rate);
+    } else {
+      XELOGI("Mic: capturing from system default device '{}' at {} Hz",
+             default_name, sample_rate);
+    }
+    LogCaptureDevices();
+  } else {
+    XELOGI("Mic: capturing from '{}' at {} Hz", device_name_, sample_rate);
+  }
   return true;
 }
 
